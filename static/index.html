@@ -122,7 +122,7 @@
         </div>
       </div>
 
-      <div class="nav-item">
+      <div class="nav-item" style="display: none;">
         <a href="#" class="nav-link" onclick="showSection('about')">
           <i class="bi bi-info-circle"></i>
           关于
@@ -176,13 +176,13 @@
             <div class="stat-number" id="activeAccounts">0</div>
             <div class="stat-label">启用账号数</div>
           </div>
-          <div class="stat-card">
+          <!-- <div class="stat-card">
             <div class="stat-icon info">
               <i class="bi bi-receipt-cutoff"></i>
             </div>
             <div class="stat-number" id="totalOrders">0</div>
             <div class="stat-label">总订单数</div>
-          </div>
+          </div> -->
         </div>
 
         <!-- 账号详情列表 -->
@@ -2919,6 +2919,7 @@
                     <div class="col-md-6">
                       <label for="aiModelName" class="form-label"></label>AI模型</label>
                       <select class="form-select" id="aiModelName" onchange="toggleCustomModelInput()">
+                        <option value="Qwen/Qwen2.5-7B-Instruct">Qwen2.5-7B-Instruct</option>
                         <option value="THUDM/glm-4-9b-chat">GLM-4-9B-Chat</option>
                         <option value="qwen-plus">通义千问Plus</option>
                         <option value="qwen-turbo">通义千问Turbo</option>

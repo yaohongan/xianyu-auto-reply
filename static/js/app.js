@@ -215,7 +215,7 @@ async function loadDashboard() {
         dashboardData.totalKeywords = totalKeywords;
 
         // 加载订单数量
-        await loadOrdersCount();
+        // await loadOrdersCount();
 
         // 更新仪表盘显示
         updateDashboardStats(accountsWithKeywords.length, totalKeywords, enabledAccounts);
@@ -230,28 +230,28 @@ async function loadDashboard() {
 }
 
 // 加载订单数量
-async function loadOrdersCount() {
-    try {
-        const token = localStorage.getItem('auth_token');
-        const response = await fetch('/admin/data/orders', {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
+// async function loadOrdersCount() {
+//     try {
+//         const token = localStorage.getItem('auth_token');
+//         const response = await fetch('/admin/data/orders', {
+//             headers: {
+//                 'Authorization': `Bearer ${token}`
+//             }
+//         });
 
-        const data = await response.json();
-        if (data.success) {
-            const ordersCount = data.data ? data.data.length : 0;
-            document.getElementById('totalOrders').textContent = ordersCount;
-        } else {
-            console.error('加载订单数量失败:', data.message);
-            document.getElementById('totalOrders').textContent = '0';
-        }
-    } catch (error) {
-        console.error('加载订单数量失败:', error);
-        document.getElementById('totalOrders').textContent = '0';
-    }
-}
+//         const data = await response.json();
+//         if (data.success) {
+//             const ordersCount = data.data ? data.data.length : 0;
+//             document.getElementById('totalOrders').textContent = ordersCount;
+//         } else {
+//             console.error('加载订单数量失败:', data.message);
+//             document.getElementById('totalOrders').textContent = '0';
+//         }
+//     } catch (error) {
+//         console.error('加载订单数量失败:', error);
+//         document.getElementById('totalOrders').textContent = '0';
+//     }
+// }
 
 // 更新仪表盘统计数据
 function updateDashboardStats(totalAccounts, totalKeywords, enabledAccounts) {
@@ -2120,9 +2120,17 @@ async function configAIReply(accountId) {
     const modelSelect = document.getElementById('aiModelName');
     const customModelInput = document.getElementById('customModelName');
     const modelName = settings.model_name;
+    
     // 检查是否是预设模型
-    const presetModels = ['qwen-plus', 'qwen-turbo', 'qwen-max', 'gpt-3.5-turbo', 'gpt-4'];
-    if (presetModels.includes(modelName)) {
+    const presetModels = ['Qwen/Qwen2.5-7B-Instruct', 'THUDM/glm-4-9b-chat', 'qwen-plus', 'qwen-turbo', 'qwen-max', 'gpt-3.5-turbo', 'gpt-4'];
+    
+    // 如果模型名称为空或null，默认选择第一个预设模型
+    if (!modelName || modelName.trim() === '') {
+        modelSelect.value = presetModels[0]; // 默认选择Qwen2.5-7B-Instruct
+        customModelInput.style.display = 'none';
+        customModelInput.value = '';
+    } else if (presetModels.includes(modelName)) {
+        // 预设模型
         modelSelect.value = modelName;
         customModelInput.style.display = 'none';
         customModelInput.value = '';
@@ -2130,7 +2138,7 @@ async function configAIReply(accountId) {
         // 自定义模型
         modelSelect.value = 'custom';
         customModelInput.style.display = 'block';
-        customModelInput.value = modelName;
+        customModelInput.value = modelName || ''; // 确保自定义模型输入框为空或显示实际值
     }
     document.getElementById('aiBaseUrl').value = settings.base_url;
     document.getElementById('aiApiKey').value = settings.api_key;
@@ -2138,6 +2146,9 @@ async function configAIReply(accountId) {
     document.getElementById('maxDiscountAmount').value = settings.max_discount_amount;
     document.getElementById('maxBargainRounds').value = settings.max_bargain_rounds;
     document.getElementById('customPrompts').value = settings.custom_prompts;
+
+    // 确保自定义模型输入框的显示状态正确
+    toggleCustomModelInput();
 
     // 切换设置显示状态
     toggleAIReplySettings();
@@ -2304,10 +2315,10 @@ function toggleCustomModelInput() {
     const modelSelect = document.getElementById('aiModelName');
     const customModelInput = document.getElementById('customModelName');
     if (modelSelect.value === 'custom') {
-    customModelInput.style.display = 'block';
-    customModelInput.focus();
+        customModelInput.style.display = 'block';
+        customModelInput.focus();
     } else {
-    customModelInput.style.display = 'none';
+        customModelInput.style.display = 'none';
     customModelInput.value = '';
     }
 }

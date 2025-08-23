@@ -2952,7 +2952,7 @@ class BatchDeleteRequest(BaseModel):
 
 class AIReplySettings(BaseModel):
     ai_enabled: bool
-    model_name: str = "THUDM/glm-4-9b-chat"
+    model_name: str = "Qwen/Qwen2.5-7B-Instruct"
     api_key: str = ""
     base_url: str = "https://api.siliconflow.cn/v1"
     max_discount_percent: int = 10

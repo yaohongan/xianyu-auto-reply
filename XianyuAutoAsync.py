@@ -112,6 +112,9 @@ class XianyuLive:
         self.current_token = None
         self.token_refresh_task = None
         self.connection_restart_flag = False  # 连接重启标志
+        
+        # 从数据库加载Token状态
+        self._load_token_state_from_db()
 
         # 通知防重复机制
         self.last_notification_time = {}  # 记录每种通知类型的最后发送时间
@@ -133,6 +136,51 @@ class XianyuLive:
 
         # 启动定期清理过期暂停记录的任务
         self.cleanup_task = None
+    
+    def _load_token_state_from_db(self):
+        """从数据库加载Token状态"""
+        try:
+            from db_manager import db_manager
+            token_state = db_manager.get_token_state(self.cookie_id)
+            if token_state:
+                self.last_token_refresh_time = token_state.get('last_token_refresh_time', 0)
+                self.current_token = token_state.get('current_token', None)
+                logger.info(f"【{self.cookie_id}】从数据库加载Token状态: last_refresh={self.last_token_refresh_time}, has_token={bool(self.current_token)}")
+            else:
+                logger.info(f"【{self.cookie_id}】数据库中未找到Token状态，使用默认值")
+        except Exception as e:
+            logger.warning(f"【{self.cookie_id}】从数据库加载Token状态失败: {e}，使用默认值")
+    
+    def _is_token_valid(self) -> bool:
+        """检查Token是否有效（未过期）"""
+        current_time = time.time()
+        time_since_refresh = current_time - self.last_token_refresh_time
+        # 如果距离上次刷新时间超过刷新间隔的90%，认为Token可能过期
+        threshold = self.token_refresh_interval * 0.9
+        is_valid = time_since_refresh < threshold
+        
+        if not is_valid:
+            logger.warning(f"【{self.cookie_id}】Token可能已过期: 距离上次刷新{time_since_refresh:.0f}秒，阈值{threshold:.0f}秒")
+        
+        return is_valid
+    
+    async def _ensure_token_valid(self) -> bool:
+        """确保Token有效，如果无效则尝试刷新"""
+        if self._is_token_valid():
+            return True
+        
+        logger.info(f"【{self.cookie_id}】Token即将过期，执行预防性刷新...")
+        try:
+            new_token = await self.refresh_token()
+            if new_token:
+                logger.info(f"【{self.cookie_id}】Token预防性刷新成功")
+                return True
+            else:
+                logger.error(f"【{self.cookie_id}】Token预防性刷新失败")
+                return False
+        except Exception as e:
+            logger.error(f"【{self.cookie_id}】Token预防性刷新异常: {self._safe_str(e)}")
+            return False
 
 
 
@@ -669,6 +717,21 @@ class XianyuLive:
                                 new_token = res_json['data']['accessToken']
                                 self.current_token = new_token
                                 self.last_token_refresh_time = time.time()
+
+                                # 保存Token状态到数据库
+                                try:
+                                    from db_manager import db_manager
+                                    success = db_manager.update_token_state(
+                                        self.cookie_id, 
+                                        last_token_refresh_time=self.last_token_refresh_time,
+                                        current_token=new_token
+                                    )
+                                    if success:
+                                        logger.debug(f"【{self.cookie_id}】Token状态已保存到数据库")
+                                    else:
+                                        logger.warning(f"【{self.cookie_id}】Token状态保存到数据库失败")
+                                except Exception as e:
+                                    logger.error(f"【{self.cookie_id}】保存Token状态到数据库异常: {e}")
 
                                 logger.info(f"【{self.cookie_id}】Token刷新成功")
                                 return new_token
@@ -2280,6 +2343,11 @@ class XianyuLive:
     async def auto_confirm(self, order_id, item_id=None, retry_count=0):
         """自动确认发货 - 使用加密模块，不包含延时处理（延时已在_auto_delivery中处理）"""
         try:
+            # 在执行关键操作前检查Token有效性
+            if not await self._ensure_token_valid():
+                logger.error(f"【{self.cookie_id}】Token无效，无法执行自动确认发货操作")
+                return {"error": "Token无效，无法执行自动确认发货操作", "order_id": order_id}
+            
             logger.debug(f"【{self.cookie_id}】开始确认发货，订单ID: {order_id}")
 
             # 导入解密后的确认发货模块
@@ -2316,6 +2384,11 @@ class XianyuLive:
     async def auto_freeshipping(self, order_id, item_id, buyer_id, retry_count=0):
         """自动免拼发货 - 使用解密模块"""
         try:
+            # 在执行关键操作前检查Token有效性
+            if not await self._ensure_token_valid():
+                logger.error(f"【{self.cookie_id}】Token无效，无法执行自动免拼发货操作")
+                return None
+            
             logger.debug(f"【{self.cookie_id}】开始免拼发货，订单ID: {order_id}")
 
             # 导入解密后的免拼发货模块
@@ -2425,6 +2498,11 @@ class XianyuLive:
         """自动发货功能 - 获取卡券规则，执行延时，确认发货，发送内容"""
         try:
             from db_manager import db_manager
+
+            # 在执行关键操作前检查Token有效性
+            if not await self._ensure_token_valid():
+                logger.error(f"【{self.cookie_id}】Token无效，无法执行自动发货操作")
+                return None
 
             logger.info(f"开始自动发货检查: 商品ID={item_id}")
 
@@ -2962,6 +3040,9 @@ class XianyuLive:
 
     async def token_refresh_loop(self):
         """Token刷新循环"""
+        # 启动时立即检查Token是否过期
+        startup_check = True
+        
         while True:
             try:
                 # 检查账号是否启用
@@ -2971,23 +3052,31 @@ class XianyuLive:
                     break
 
                 current_time = time.time()
-                if current_time - self.last_token_refresh_time >= self.token_refresh_interval:
-                    logger.info("Token即将过期，准备刷新...")
-                    new_token = await self.refresh_token()
-                    if new_token:
-                        logger.info(f"【{self.cookie_id}】Token刷新成功，准备重启实例...")
-                        # 注意：refresh_token方法中已经调用了_restart_instance()
-                        # 这里只需要关闭当前连接，让main循环重新开始
-                        self.connection_restart_flag = True
-                        if self.ws:
-                            await self.ws.close()
-                        break
-                    else:
-                        logger.error(f"【{self.cookie_id}】Token刷新失败，将在{self.token_retry_interval // 60}分钟后重试")
-                        # 发送Token刷新失败通知
-                        await self.send_token_refresh_notification("Token定时刷新失败，将自动重试", "token_scheduled_refresh_failed")
-                        await asyncio.sleep(self.token_retry_interval)
-                        continue
+                # 启动时立即检查或定期检查Token是否过期
+                if startup_check or current_time - self.last_token_refresh_time >= self.token_refresh_interval:
+                    if startup_check:
+                        logger.info(f"【{self.cookie_id}】启动时检查Token状态: last_refresh={self.last_token_refresh_time}, interval={self.token_refresh_interval}")
+                        startup_check = False
+                    
+                    # 检查Token是否过期（考虑一定的提前量）
+                    time_since_refresh = current_time - self.last_token_refresh_time
+                    if time_since_refresh >= self.token_refresh_interval:
+                        logger.info("Token即将过期，准备刷新...")
+                        new_token = await self.refresh_token()
+                        if new_token:
+                            logger.info(f"【{self.cookie_id}】Token刷新成功，准备重启实例...")
+                            # 注意：refresh_token方法中已经调用了_restart_instance()
+                            # 这里只需要关闭当前连接，让main循环重新开始
+                            self.connection_restart_flag = True
+                            if self.ws:
+                                await self.ws.close()
+                            break
+                        else:
+                            logger.error(f"【{self.cookie_id}】Token刷新失败，将在{self.token_retry_interval // 60}分钟后重试")
+                            # 发送Token刷新失败通知
+                            await self.send_token_refresh_notification("Token定时刷新失败，将自动重试", "token_scheduled_refresh_failed")
+                            await asyncio.sleep(self.token_retry_interval)
+                            continue
                 await asyncio.sleep(60)
             except Exception as e:
                 logger.error(f"Token刷新循环出错: {self._safe_str(e)}")
@@ -3392,6 +3481,7 @@ class XianyuLive:
 
             # 如果不是同步包消息，直接返回
             if not self.is_sync_package(message_data):
+                logger.info(f"【{self.cookie_id}】非同步包消息，跳过处理")
                 return
 
             # 获取并解密数据
@@ -3568,7 +3658,7 @@ class XianyuLive:
 
             # 判断是否为聊天消息
             if not self.is_chat_message(message):
-                logger.debug("非聊天消息")
+                logger.info(f"【{self.cookie_id}】非聊天消息，消息类型: {type(message)}, 内容: {str(message)[:200]}...")
                 return
 
             # 处理聊天消息
@@ -3855,7 +3945,7 @@ class XianyuLive:
                         logger.info(f"【{self.cookie_id}】准备进入消息循环...")
 
                         async for message in websocket:
-                            # logger.info(f"【{self.cookie_id}】收到WebSocket消息: {len(message) if message else 0} 字节")
+                            logger.info(f"【{self.cookie_id}】收到WebSocket消息: {len(message) if message else 0} 字节")
                             try:
                                 message_data = json.loads(message)
 

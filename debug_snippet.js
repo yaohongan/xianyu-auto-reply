@@ -1,0 +1,1 @@
+console.log('Debug: modelName from settings:', settings.model_name); console.log('Debug: presetModels includes check:', presetModels.includes(settings.model_name)); console.log('Debug: modelSelect.value set to:', modelSelect.value);

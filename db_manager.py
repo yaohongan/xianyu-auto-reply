@@ -106,7 +106,7 @@ class DBManager:
             )
             ''')
 
-            # 创建cookies表（添加user_id字段和auto_confirm字段）
+            # 创建cookies表（添加user_id字段、auto_confirm字段和Token状态字段）
             cursor.execute('''
             CREATE TABLE IF NOT EXISTS cookies (
                 id TEXT PRIMARY KEY,
@@ -114,6 +114,8 @@ class DBManager:
                 user_id INTEGER NOT NULL,
                 auto_confirm INTEGER DEFAULT 1,
                 remark TEXT DEFAULT '',
+                last_token_refresh_time REAL DEFAULT 0,
+                current_token TEXT DEFAULT '',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
@@ -148,7 +150,7 @@ class DBManager:
             CREATE TABLE IF NOT EXISTS ai_reply_settings (
                 cookie_id TEXT PRIMARY KEY,
                 ai_enabled BOOLEAN DEFAULT FALSE,
-                model_name TEXT DEFAULT 'THUDM/glm-4-9b-chat',
+                model_name TEXT DEFAULT 'Qwen/Qwen2.5-7B-Instruct',
                 api_key TEXT,
                 base_url TEXT DEFAULT 'https://api.siliconflow.cn/v1',
                 max_discount_percent INTEGER DEFAULT 10,
@@ -615,6 +617,27 @@ class DBManager:
                     # auto_confirm列存在，更新NULL值
                     self._execute_sql(cursor, "UPDATE cookies SET auto_confirm = 1 WHERE auto_confirm IS NULL")
 
+                # 为cookies表添加Token状态字段（如果不存在）
+                try:
+                    self._execute_sql(cursor, "SELECT last_token_refresh_time FROM cookies LIMIT 1")
+                except sqlite3.OperationalError:
+                    # last_token_refresh_time列不存在，需要添加
+                    self._execute_sql(cursor, "ALTER TABLE cookies ADD COLUMN last_token_refresh_time REAL DEFAULT 0")
+                    self._execute_sql(cursor, "UPDATE cookies SET last_token_refresh_time = 0 WHERE last_token_refresh_time IS NULL")
+                else:
+                    # last_token_refresh_time列存在，更新NULL值
+                    self._execute_sql(cursor, "UPDATE cookies SET last_token_refresh_time = 0 WHERE last_token_refresh_time IS NULL")
+
+                try:
+                    self._execute_sql(cursor, "SELECT current_token FROM cookies LIMIT 1")
+                except sqlite3.OperationalError:
+                    # current_token列不存在，需要添加
+                    self._execute_sql(cursor, "ALTER TABLE cookies ADD COLUMN current_token TEXT DEFAULT ''")
+                    self._execute_sql(cursor, "UPDATE cookies SET current_token = '' WHERE current_token IS NULL")
+                else:
+                    # current_token列存在，更新NULL值
+                    self._execute_sql(cursor, "UPDATE cookies SET current_token = '' WHERE current_token IS NULL")
+
                 # 为delivery_rules表添加user_id字段（如果不存在）
                 try:
                     self._execute_sql(cursor, "SELECT user_id FROM delivery_rules LIMIT 1")
@@ -1060,7 +1083,8 @@ class DBManager:
         return cursor.executemany(sql, params_list)
     
     # -------------------- Cookie操作 --------------------
-    def save_cookie(self, cookie_id: str, cookie_value: str, user_id: int = None) -> bool:
+    def save_cookie(self, cookie_id: str, cookie_value: str, user_id: int = None, 
+                   last_token_refresh_time: float = None, current_token: str = None) -> bool:
         """保存Cookie到数据库，如存在则更新"""
         with self.lock:
             try:
@@ -1078,10 +1102,34 @@ class DBManager:
                         admin_user = cursor.fetchone()
                         user_id = admin_user[0] if admin_user else 1
 
-                self._execute_sql(cursor,
-                    "INSERT OR REPLACE INTO cookies (id, value, user_id) VALUES (?, ?, ?)",
-                    (cookie_id, cookie_value, user_id)
-                )
+                # 构建SQL语句，根据是否提供Token状态参数决定更新哪些字段
+                if last_token_refresh_time is not None or current_token is not None:
+                    # 获取现有的Token状态
+                    self._execute_sql(cursor, 
+                        "SELECT last_token_refresh_time, current_token FROM cookies WHERE id = ?", 
+                        (cookie_id,))
+                    existing_token_data = cursor.fetchone()
+                    
+                    if existing_token_data:
+                        existing_refresh_time, existing_token = existing_token_data
+                        # 使用提供的值或保持现有值
+                        final_refresh_time = last_token_refresh_time if last_token_refresh_time is not None else existing_refresh_time
+                        final_token = current_token if current_token is not None else existing_token
+                    else:
+                        # 新记录，使用提供的值或默认值
+                        final_refresh_time = last_token_refresh_time if last_token_refresh_time is not None else 0
+                        final_token = current_token if current_token is not None else ''
+                    
+                    self._execute_sql(cursor,
+                        "INSERT OR REPLACE INTO cookies (id, value, user_id, last_token_refresh_time, current_token) VALUES (?, ?, ?, ?, ?)",
+                        (cookie_id, cookie_value, user_id, final_refresh_time, final_token)
+                    )
+                else:
+                    # 只更新基本字段，保持Token状态不变
+                    self._execute_sql(cursor,
+                        "INSERT OR REPLACE INTO cookies (id, value, user_id) VALUES (?, ?, ?)",
+                        (cookie_id, cookie_value, user_id)
+                    )
 
                 self.conn.commit()
                 logger.info(f"Cookie保存成功: {cookie_id} (用户ID: {user_id})")
@@ -1101,16 +1149,26 @@ class DBManager:
 
     
     def delete_cookie(self, cookie_id: str) -> bool:
-        """从数据库删除Cookie及其关键字"""
+        """从数据库删除Cookie及其关联数据"""
         with self.lock:
             try:
                 cursor = self.conn.cursor()
                 # 删除关联的关键字
                 self._execute_sql(cursor, "DELETE FROM keywords WHERE cookie_id = ?", (cookie_id,))
+                # 删除AI回复设置
+                self._execute_sql(cursor, "DELETE FROM ai_reply_settings WHERE cookie_id = ?", (cookie_id,))
+                # 删除默认回复设置
+                self._execute_sql(cursor, "DELETE FROM default_replies WHERE cookie_id = ?", (cookie_id,))
+                # 删除默认回复记录
+                self._execute_sql(cursor, "DELETE FROM default_reply_records WHERE cookie_id = ?", (cookie_id,))
+                # 删除消息通知配置
+                self._execute_sql(cursor, "DELETE FROM message_notifications WHERE cookie_id = ?", (cookie_id,))
+                # 删除Cookie状态
+                self._execute_sql(cursor, "DELETE FROM cookie_status WHERE cookie_id = ?", (cookie_id,))
                 # 删除Cookie
                 self._execute_sql(cursor, "DELETE FROM cookies WHERE id = ?", (cookie_id,))
                 self.conn.commit()
-                logger.debug(f"Cookie删除成功: {cookie_id}")
+                logger.debug(f"Cookie及关联数据删除成功: {cookie_id}")
                 return True
             except Exception as e:
                 logger.error(f"Cookie删除失败: {e}")
@@ -1142,6 +1200,69 @@ class DBManager:
             except Exception as e:
                 logger.error(f"获取所有Cookie失败: {e}")
                 return {}
+
+    def update_token_state(self, cookie_id: str, last_token_refresh_time: float = None, current_token: str = None) -> bool:
+        """更新Cookie的Token状态"""
+        with self.lock:
+            try:
+                cursor = self.conn.cursor()
+                
+                # 构建动态SQL更新语句
+                update_fields = []
+                params = []
+                
+                if last_token_refresh_time is not None:
+                    update_fields.append("last_token_refresh_time = ?")
+                    params.append(last_token_refresh_time)
+                
+                if current_token is not None:
+                    update_fields.append("current_token = ?")
+                    params.append(current_token)
+                
+                if not update_fields:
+                    logger.warning(f"更新Token状态时未提供任何字段: {cookie_id}")
+                    return False
+                
+                params.append(cookie_id)
+                sql = f"UPDATE cookies SET {', '.join(update_fields)} WHERE id = ?"
+                
+                self._execute_sql(cursor, sql, params)
+                self.conn.commit()
+                
+                if cursor.rowcount > 0:
+                    logger.info(f"Token状态更新成功: {cookie_id}")
+                    return True
+                else:
+                    logger.warning(f"Token状态更新失败，Cookie不存在: {cookie_id}")
+                    return False
+                    
+            except Exception as e:
+                logger.error(f"更新Token状态失败: {e}")
+                self.conn.rollback()
+                return False
+
+    def get_token_state(self, cookie_id: str) -> Optional[Dict[str, Any]]:
+        """获取Cookie的Token状态"""
+        with self.lock:
+            try:
+                cursor = self.conn.cursor()
+                self._execute_sql(cursor, 
+                    "SELECT last_token_refresh_time, current_token FROM cookies WHERE id = ?", 
+                    (cookie_id,))
+                result = cursor.fetchone()
+                
+                if result:
+                    return {
+                        'last_token_refresh_time': result[0] or 0,
+                        'current_token': result[1] or ''
+                    }
+                else:
+                    logger.warning(f"获取Token状态失败，Cookie不存在: {cookie_id}")
+                    return None
+                    
+            except Exception as e:
+                logger.error(f"获取Token状态失败: {e}")
+                return None
 
 
 
@@ -1542,7 +1663,7 @@ class DBManager:
                 ''', (
                     cookie_id,
                     settings.get('ai_enabled', False),
-                    settings.get('model_name', 'THUDM/glm-4-9b-chat'),
+                    settings.get('model_name', 'Qwen/Qwen2.5-7B-Instruct'),
                     settings.get('api_key', ''),
                     settings.get('base_url', 'https://api.siliconflow.cn/v1'),
                     settings.get('max_discount_percent', 10),
@@ -1586,7 +1707,7 @@ class DBManager:
                     # 返回默认设置
                     return {
                         'ai_enabled': False,
-                        'model_name': 'THUDM/glm-4-9b-chat',
+                        'model_name': 'Qwen/Qwen2.5-7B-Instruct',
                         'api_key': '',
                         'base_url': 'https://api.siliconflow.cn/v1',
                         'max_discount_percent': 10,
@@ -1598,7 +1719,7 @@ class DBManager:
                 logger.error(f"获取AI回复设置失败: {e}")
                 return {
                     'ai_enabled': False,
-                    'model_name': 'THUDM/glm-4-9b-chat',
+                    'model_name': 'Qwen/Qwen2.5-7B-Instruct',
                     'api_key': '',
                     'base_url': 'https://api.siliconflow.cn/v1',
                     'max_discount_percent': 10,
