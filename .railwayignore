@@ -1,0 +1,58 @@
+# Railway ignore file
+# 排除不必要的文件和目录
+
+# 日志文件
+logs/
+*.log
+
+# 缓存文件
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# 环境变量文件
+.env
+.env.local
+.env.*.local
+
+# IDE文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+
+# Git文件
+.git/
+.gitignore
+
+# 临时文件
+tmp/
+temp/
+
+# 上传文件（如果不需要保留）
+static/uploads/
+
+# 数据库文件（如果使用本地数据库）
+*.db
+*.sqlite
+*.sqlite3
+
+# 测试文件
+tests/
+test_*
+
+# 文档文件
+README.md
+*.md
+
+# Docker文件（Railway不需要）
+Dockerfile*
+docker-compose*.yml
+.dockerignore
