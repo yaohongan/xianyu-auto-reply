@@ -1267,13 +1267,7 @@ async function loadCookies() {
                 </span>
             </div>
         </td>
-        <td class="align-middle">
-            <div class="pause-duration-cell" data-cookie-id="${cookie.id}">
-                <span class="pause-duration-display" onclick="editPauseDuration('${cookie.id}', ${cookie.pause_duration || 10})" title="点击编辑暂停时间" style="cursor: pointer; color: #6c757d; font-size: 0.875rem;">
-                    <i class="bi bi-clock me-1"></i>${cookie.pause_duration || 10}分钟
-                </span>
-            </div>
-        </td>
+
         <td class="align-middle">
             <div class="btn-group" role="group">
             <button class="btn btn-sm btn-outline-primary" onclick="editCookieInline('${cookie.id}', '${cookie.value}')" title="修改Cookie" ${!isEnabled ? 'disabled' : ''}>
@@ -7510,128 +7504,7 @@ function editRemark(cookieId, currentRemark) {
     input.select();
 }
 
-// 编辑暂停时间
-function editPauseDuration(cookieId, currentDuration) {
-    console.log('editPauseDuration called:', cookieId, currentDuration); // 调试信息
-    const pauseCell = document.querySelector(`[data-cookie-id="${cookieId}"] .pause-duration-display`);
-    if (!pauseCell) {
-        console.log('pauseCell not found'); // 调试信息
-        return;
-    }
 
-    // 创建输入框
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.className = 'form-control form-control-sm';
-    input.value = currentDuration || 10;
-    input.placeholder = '请输入暂停时间...';
-    input.style.fontSize = '0.875rem';
-    input.min = 1;
-    input.max = 60;
-    input.step = 1;
-
-    // 保存原始内容和原始值
-    const originalContent = pauseCell.innerHTML;
-    const originalValue = currentDuration || 10;
-
-    // 标记是否已经进行了编辑
-    let hasChanged = false;
-    let isProcessing = false; // 防止重复处理
-
-    // 替换为输入框
-    pauseCell.innerHTML = '';
-    pauseCell.appendChild(input);
-
-    // 监听输入变化
-    input.addEventListener('input', () => {
-        const newValue = parseInt(input.value) || 10;
-        hasChanged = newValue !== originalValue;
-    });
-
-    // 保存函数
-    const savePauseDuration = async () => {
-        console.log('savePauseDuration called, isProcessing:', isProcessing, 'hasChanged:', hasChanged); // 调试信息
-        if (isProcessing) return; // 防止重复调用
-
-        const newDuration = parseInt(input.value) || 10;
-        console.log('newDuration:', newDuration, 'originalValue:', originalValue); // 调试信息
-
-        // 验证范围
-        if (newDuration < 1 || newDuration > 60) {
-            showToast('暂停时间必须在1-60分钟之间', 'warning');
-            input.focus();
-            return;
-        }
-
-        // 如果没有变化，直接恢复显示
-        if (!hasChanged || newDuration === originalValue) {
-            console.log('No changes detected, restoring original content'); // 调试信息
-            pauseCell.innerHTML = originalContent;
-            return;
-        }
-
-        isProcessing = true;
-
-        try {
-            const response = await fetch(`${apiBase}/cookies/${cookieId}/pause-duration`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${authToken}`
-                },
-                body: JSON.stringify({ pause_duration: newDuration })
-            });
-
-            if (response.ok) {
-                // 更新显示
-                pauseCell.innerHTML = `
-                    <span class="pause-duration-display" onclick="editPauseDuration('${cookieId}', ${newDuration})" title="点击编辑暂停时间" style="cursor: pointer; color: #6c757d; font-size: 0.875rem;">
-                        <i class="bi bi-clock me-1"></i>${newDuration}分钟
-                    </span>
-                `;
-                showToast('暂停时间更新成功', 'success');
-            } else {
-                const errorData = await response.json();
-                showToast(`暂停时间更新失败: ${errorData.detail || '未知错误'}`, 'danger');
-                // 恢复原始内容
-                pauseCell.innerHTML = originalContent;
-            }
-        } catch (error) {
-            console.error('更新暂停时间失败:', error);
-            showToast('暂停时间更新失败', 'danger');
-            // 恢复原始内容
-            pauseCell.innerHTML = originalContent;
-        } finally {
-            isProcessing = false;
-        }
-    };
-
-    // 取消函数
-    const cancelEdit = () => {
-        if (isProcessing) return;
-        pauseCell.innerHTML = originalContent;
-    };
-
-    // 延迟绑定blur事件，避免立即触发
-    setTimeout(() => {
-        input.addEventListener('blur', savePauseDuration);
-    }, 100);
-
-    // 绑定键盘事件
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            savePauseDuration();
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            cancelEdit();
-        }
-    });
-
-    // 聚焦并选中文本
-    input.focus();
-    input.select();
-}
 
 // ==================== 工具提示初始化 ====================
 

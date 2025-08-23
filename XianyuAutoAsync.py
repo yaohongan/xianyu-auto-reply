@@ -21,68 +21,7 @@ import aiohttp
 from collections import defaultdict
 
 
-class AutoReplyPauseManager:
-    """自动回复暂停管理器"""
-    def __init__(self):
-        # 存储每个chat_id的暂停信息 {chat_id: pause_until_timestamp}
-        self.paused_chats = {}
 
-    def pause_chat(self, chat_id: str, cookie_id: str):
-        """暂停指定chat_id的自动回复，使用账号特定的暂停时间"""
-        # 获取账号特定的暂停时间
-        try:
-            from db_manager import db_manager
-            pause_minutes = db_manager.get_cookie_pause_duration(cookie_id)
-        except Exception as e:
-            logger.error(f"获取账号 {cookie_id} 暂停时间失败: {e}，使用默认10分钟")
-            pause_minutes = 10
-
-        pause_duration_seconds = pause_minutes * 60
-        pause_until = time.time() + pause_duration_seconds
-        self.paused_chats[chat_id] = pause_until
-
-        # 计算暂停结束时间
-        end_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(pause_until))
-        logger.info(f"【{cookie_id}】检测到手动发出消息，chat_id {chat_id} 自动回复暂停{pause_minutes}分钟，恢复时间: {end_time}")
-
-    def is_chat_paused(self, chat_id: str) -> bool:
-        """检查指定chat_id是否处于暂停状态"""
-        if chat_id not in self.paused_chats:
-            return False
-
-        current_time = time.time()
-        pause_until = self.paused_chats[chat_id]
-
-        if current_time >= pause_until:
-            # 暂停时间已过，移除记录
-            del self.paused_chats[chat_id]
-            return False
-
-        return True
-
-    def get_remaining_pause_time(self, chat_id: str) -> int:
-        """获取指定chat_id剩余暂停时间（秒）"""
-        if chat_id not in self.paused_chats:
-            return 0
-
-        current_time = time.time()
-        pause_until = self.paused_chats[chat_id]
-        remaining = max(0, int(pause_until - current_time))
-
-        return remaining
-
-    def cleanup_expired_pauses(self):
-        """清理已过期的暂停记录"""
-        current_time = time.time()
-        expired_chats = [chat_id for chat_id, pause_until in self.paused_chats.items()
-                        if current_time >= pause_until]
-
-        for chat_id in expired_chats:
-            del self.paused_chats[chat_id]
-
-
-# 全局暂停管理器实例
-pause_manager = AutoReplyPauseManager()
 
 # 日志配置
 log_dir = 'logs'
@@ -1812,27 +1751,26 @@ class XianyuLive:
                     config_data = self._parse_notification_config(channel_config)
                     logger.info(f"📱 解析后的配置数据: {config_data}")
 
-                    match channel_type:
-                        case 'qq':
-                            logger.info(f"📱 开始发送QQ通知...")
-                            await self._send_qq_notification(config_data, notification_msg)
-                        case 'ding_talk' | 'dingtalk':
-                            logger.info(f"📱 开始发送钉钉通知...")
-                            await self._send_dingtalk_notification(config_data, notification_msg)
-                        case 'email':
-                            logger.info(f"📱 开始发送邮件通知...")
-                            await self._send_email_notification(config_data, notification_msg)
-                        case 'webhook':
-                            logger.info(f"📱 开始发送Webhook通知...")
-                            await self._send_webhook_notification(config_data, notification_msg)
-                        case 'wechat':
-                            logger.info(f"📱 开始发送微信通知...")
-                            await self._send_wechat_notification(config_data, notification_msg)
-                        case 'telegram':
-                            logger.info(f"📱 开始发送Telegram通知...")
-                            await self._send_telegram_notification(config_data, notification_msg)
-                        case _:
-                            logger.warning(f"📱 不支持的通知渠道类型: {channel_type}")
+                    if channel_type == 'qq':
+                        logger.info(f"📱 开始发送QQ通知...")
+                        await self._send_qq_notification(config_data, notification_msg)
+                    elif channel_type in ['ding_talk', 'dingtalk']:
+                        logger.info(f"📱 开始发送钉钉通知...")
+                        await self._send_dingtalk_notification(config_data, notification_msg)
+                    elif channel_type == 'email':
+                        logger.info(f"📱 开始发送邮件通知...")
+                        await self._send_email_notification(config_data, notification_msg)
+                    elif channel_type == 'webhook':
+                        logger.info(f"📱 开始发送Webhook通知...")
+                        await self._send_webhook_notification(config_data, notification_msg)
+                    elif channel_type == 'wechat':
+                        logger.info(f"📱 开始发送微信通知...")
+                        await self._send_wechat_notification(config_data, notification_msg)
+                    elif channel_type == 'telegram':
+                        logger.info(f"📱 开始发送Telegram通知...")
+                        await self._send_telegram_notification(config_data, notification_msg)
+                    else:
+                        logger.warning(f"📱 不支持的通知渠道类型: {channel_type}")
 
                 except Exception as notify_error:
                     logger.error(f"📱 发送通知失败 ({notification.get('channel_name', 'Unknown')}): {self._safe_str(notify_error)}")
@@ -2167,27 +2105,26 @@ class XianyuLive:
                     # 解析配置数据
                     config_data = self._parse_notification_config(channel_config)
 
-                    match channel_type:
-                        case 'qq':
-                            await self._send_qq_notification(config_data, notification_msg)
-                            notification_sent = True
-                        case 'ding_talk' | 'dingtalk':
-                            await self._send_dingtalk_notification(config_data, notification_msg)
-                            notification_sent = True
-                        case 'email':
-                            await self._send_email_notification(config_data, notification_msg)
-                            notification_sent = True
-                        case 'webhook':
-                            await self._send_webhook_notification(config_data, notification_msg)
-                            notification_sent = True
-                        case 'wechat':
-                            await self._send_wechat_notification(config_data, notification_msg)
-                            notification_sent = True
-                        case 'telegram':
-                            await self._send_telegram_notification(config_data, notification_msg)
-                            notification_sent = True
-                        case _:
-                            logger.warning(f"不支持的通知渠道类型: {channel_type}")
+                    if channel_type == 'qq':
+                        await self._send_qq_notification(config_data, notification_msg)
+                        notification_sent = True
+                    elif channel_type in ['ding_talk', 'dingtalk']:
+                        await self._send_dingtalk_notification(config_data, notification_msg)
+                        notification_sent = True
+                    elif channel_type == 'email':
+                        await self._send_email_notification(config_data, notification_msg)
+                        notification_sent = True
+                    elif channel_type == 'webhook':
+                        await self._send_webhook_notification(config_data, notification_msg)
+                        notification_sent = True
+                    elif channel_type == 'wechat':
+                        await self._send_wechat_notification(config_data, notification_msg)
+                        notification_sent = True
+                    elif channel_type == 'telegram':
+                        await self._send_telegram_notification(config_data, notification_msg)
+                        notification_sent = True
+                    else:
+                        logger.warning(f"不支持的通知渠道类型: {channel_type}")
 
                 except Exception as notify_error:
                     logger.error(f"发送Token刷新通知失败 ({notification.get('channel_name', 'Unknown')}): {self._safe_str(notify_error)}")
@@ -2313,27 +2250,26 @@ class XianyuLive:
                         # 解析配置数据
                         config_data = self._parse_notification_config(channel_config)
 
-                        match channel_type:
-                            case 'qq':
-                                await self._send_qq_notification(config_data, notification_message)
-                                logger.info(f"已发送自动发货通知到QQ")
-                            case 'ding_talk' | 'dingtalk':
-                                await self._send_dingtalk_notification(config_data, notification_message)
-                                logger.info(f"已发送自动发货通知到钉钉")
-                            case 'email':
-                                await self._send_email_notification(config_data, notification_message)
-                                logger.info(f"已发送自动发货通知到邮箱")
-                            case 'webhook':
-                                await self._send_webhook_notification(config_data, notification_message)
-                                logger.info(f"已发送自动发货通知到Webhook")
-                            case 'wechat':
-                                await self._send_wechat_notification(config_data, notification_message)
-                                logger.info(f"已发送自动发货通知到微信")
-                            case 'telegram':
-                                await self._send_telegram_notification(config_data, notification_message)
-                                logger.info(f"已发送自动发货通知到Telegram")
-                            case _:
-                                logger.warning(f"不支持的通知渠道类型: {channel_type}")
+                        if channel_type == 'qq':
+                            await self._send_qq_notification(config_data, notification_message)
+                            logger.info(f"已发送自动发货通知到QQ")
+                        elif channel_type in ['ding_talk', 'dingtalk']:
+                            await self._send_dingtalk_notification(config_data, notification_message)
+                            logger.info(f"已发送自动发货通知到钉钉")
+                        elif channel_type == 'email':
+                            await self._send_email_notification(config_data, notification_message)
+                            logger.info(f"已发送自动发货通知到邮箱")
+                        elif channel_type == 'webhook':
+                            await self._send_webhook_notification(config_data, notification_message)
+                            logger.info(f"已发送自动发货通知到Webhook")
+                        elif channel_type == 'wechat':
+                            await self._send_wechat_notification(config_data, notification_message)
+                            logger.info(f"已发送自动发货通知到微信")
+                        elif channel_type == 'telegram':
+                            await self._send_telegram_notification(config_data, notification_message)
+                            logger.info(f"已发送自动发货通知到Telegram")
+                        else:
+                            logger.warning(f"不支持的通知渠道类型: {channel_type}")
 
                     except Exception as notify_error:
                         logger.error(f"发送自动发货通知失败: {self._safe_str(notify_error)}")
@@ -3228,8 +3164,7 @@ class XianyuLive:
                     logger.info(f"【{self.cookie_id}】账号已禁用，停止清理循环")
                     break
 
-                # 清理过期的暂停记录
-                pause_manager.cleanup_expired_pauses()
+
                 
                 # 清理过期的锁（每5分钟清理一次，保留24小时内的锁）
                 self.cleanup_expired_locks(max_age_hours=24)
@@ -3670,8 +3605,8 @@ class XianyuLive:
             if send_user_id == self.myid:
                 logger.info(f"[{msg_time}] 【手动发出】 商品({item_id}): {send_message}")
 
-                # 暂停该chat_id的自动回复10分钟
-                pause_manager.pause_chat(chat_id, self.cookie_id)
+                # 检测到手动发出消息
+                logger.info(f"[{msg_time}] 【{self.cookie_id}】检测到手动发出消息，chat_id {chat_id}")
 
                 return
             else:
@@ -3793,13 +3728,7 @@ class XianyuLive:
                 logger.info(f"[{msg_time}] 【{self.cookie_id}】【系统】自动回复已禁用")
                 return
 
-            # 检查该chat_id是否处于暂停状态
-            if pause_manager.is_chat_paused(chat_id):
-                remaining_time = pause_manager.get_remaining_pause_time(chat_id)
-                remaining_minutes = remaining_time // 60
-                remaining_seconds = remaining_time % 60
-                logger.info(f"[{msg_time}] 【{self.cookie_id}】【系统】chat_id {chat_id} 自动回复已暂停，剩余时间: {remaining_minutes}分{remaining_seconds}秒")
-                return
+
 
             # 构造用户URL
             user_url = f'https://www.goofish.com/personal?userId={send_user_id}'
@@ -3916,9 +3845,9 @@ class XianyuLive:
                         logger.info(f"【{self.cookie_id}】启动token刷新任务...")
                         self.token_refresh_task = asyncio.create_task(self.token_refresh_loop())
 
-                        # 启动暂停记录清理任务
+                        # 启动清理任务
                         if not self.cleanup_task:
-                            logger.info(f"【{self.cookie_id}】启动暂停记录清理任务...")
+                            logger.info(f"【{self.cookie_id}】启动清理任务...")
                             self.cleanup_task = asyncio.create_task(self.pause_cleanup_loop())
 
                         logger.info(f"【{self.cookie_id}】开始监听WebSocket消息...")
@@ -3926,7 +3855,7 @@ class XianyuLive:
                         logger.info(f"【{self.cookie_id}】准备进入消息循环...")
 
                         async for message in websocket:
-                            logger.info(f"【{self.cookie_id}】收到WebSocket消息: {len(message) if message else 0} 字节")
+                            # logger.info(f"【{self.cookie_id}】收到WebSocket消息: {len(message) if message else 0} 字节")
                             try:
                                 message_data = json.loads(message)
 

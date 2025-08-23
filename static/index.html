@@ -36,13 +36,13 @@
           账号管理
         </a>
       </div>
-      <div class="nav-item">
+      <div class="nav-item" style="display: none;">
         <a href="#" class="nav-link" onclick="showSection('items')">
           <i class="bi bi-box-seam"></i>
           商品管理
         </a>
       </div>
-      <div class="nav-item">
+      <div class="nav-item" style="display: none;">
         <a href="#" class="nav-link" onclick="showSection('orders')">
           <i class="bi bi-receipt-cutoff"></i>
           订单管理
@@ -60,13 +60,13 @@
           指定商品回复
         </a>
       </div>
-      <div class="nav-item">
+      <div class="nav-item" style="display: none;">
         <a href="#" class="nav-link" onclick="showSection('cards')">
           <i class="bi bi-credit-card"></i>
           卡券管理
         </a>
       </div>
-      <div class="nav-item">
+      <div class="nav-item" style="display: none;">
         <a href="#" class="nav-link" onclick="showSection('auto-delivery')">
           <i class="bi bi-truck"></i>
           自动发货
@@ -84,7 +84,7 @@
           消息通知
         </a>
       </div>
-      <div class="nav-item">
+      <div class="nav-item" style="display: none;">
         <a href="#" class="nav-link" onclick="showSection('item-search')">
           <i class="bi bi-search"></i>
           商品搜索
@@ -304,13 +304,7 @@
                     <th style="width: 8%">AI回复</th>
                     <th style="width: 9%">自动确认发货</th>
                     <th style="width: 10%">备注</th>
-                    <th style="width: 10%">
-                      暂停时间
-                      <i class="bi bi-question-circle ms-1"
-                         data-bs-toggle="tooltip"
-                         data-bs-placement="top"
-                         title="检测到手动发出消息后，自动回复暂停的时间长度（分钟）。如果在暂停期间再次手动发出消息，会重新开始计时。"></i>
-                    </th>
+
                     <th style="width: 18%">操作</th>
                   </tr>
                 </thead>
@@ -1863,42 +1857,7 @@
       </div>
     </div>
 
-    <!-- 关于页面内容 -->
-    <div id="about-section" class="content-section">
-      <div class="content-header">
-        <h2 class="mb-0">
-          <i class="bi bi-info-circle me-2"></i>
-          关于
-        </h2>
-        <p class="text-muted mb-0">联系我们和技术支持</p>
-      </div>
-      <div class="content-body">
-        <div class="row">
-          <div class="col-md-6">
-            <div class="card">
-              <div class="card-header">
-                <i class="bi bi-wechat me-2"></i>微信群
-              </div>
-              <div class="card-body text-center">
-                <img src="/static/wechat-group.png" alt="微信群二维码" class="img-fluid" style="max-width: 200px;">
-                <p class="mt-3 text-muted">扫码加入微信技术交流群</p>
-              </div>
-            </div>
-          </div>
-          <div class="col-md-6">
-            <div class="card">
-              <div class="card-header">
-                <i class="bi bi-chat-square me-2"></i>QQ群
-              </div>
-              <div class="card-body text-center">
-                <img src="/static/qq-group.png" alt="QQ群二维码" class="img-fluid" style="max-width: 200px;">
-                <p class="mt-3 text-muted">扫码加入QQ技术交流群</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    
 
   </div> <!-- 结束 main-content -->
 
@@ -2960,6 +2919,7 @@
                     <div class="col-md-6">
                       <label for="aiModelName" class="form-label"></label>AI模型</label>
                       <select class="form-select" id="aiModelName" onchange="toggleCustomModelInput()">
+                        <option value="THUDM/glm-4-9b-chat">GLM-4-9B-Chat</option>
                         <option value="qwen-plus">通义千问Plus</option>
                         <option value="qwen-turbo">通义千问Turbo</option>
                         <option value="qwen-max">通义千问Max</option>

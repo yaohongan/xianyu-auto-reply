@@ -9,6 +9,7 @@ import time
 import sqlite3
 import requests
 from typing import List, Dict, Optional
+from pathlib import Path
 from loguru import logger
 from openai import OpenAI
 from db_manager import db_manager
@@ -23,35 +24,46 @@ class AIReplyEngine:
         self._init_default_prompts()
     
     def _init_default_prompts(self):
-        """初始化默认提示词"""
-        self.default_prompts = {
-            'classify': '''你是一个意图分类专家，需要判断用户消息的意图类型。
-请根据用户消息内容，返回以下意图之一：
-- price: 价格相关（议价、优惠、降价等）
-- tech: 技术相关（产品参数、使用方法、故障等）
-- default: 其他一般咨询
-
-只返回意图类型，不要其他内容。''',
-            
-            'price': '''你是一位经验丰富的销售专家，擅长议价。
-语言要求：简短直接，每句≤10字，总字数≤40字。
-议价策略：
-1. 根据议价次数递减优惠：第1次小幅优惠，第2次中等优惠，第3次最大优惠
-2. 接近最大议价轮数时要坚持底线，强调商品价值
-3. 优惠不能超过设定的最大百分比和金额
-4. 语气要友好但坚定，突出商品优势
-注意：结合商品信息、对话历史和议价设置，给出合适的回复。''',
-            
-            'tech': '''你是一位技术专家，专业解答产品相关问题。
-语言要求：简短专业，每句≤10字，总字数≤40字。
-回答重点：产品功能、使用方法、注意事项。
-注意：基于商品信息回答，避免过度承诺。''',
-            
-            'default': '''你是一位资深电商卖家，提供优质客服。
-语言要求：简短友好，每句≤10字，总字数≤40字。
-回答重点：商品介绍、物流、售后等常见问题。
-注意：结合商品信息，给出实用建议。'''
+        """从prompts文件夹初始化默认提示词"""
+        self.default_prompts = {}
+        prompts_dir = Path(__file__).parent / "prompts"
+        
+        # 定义提示词文件映射
+        prompt_files = {
+            'classify': 'classify_prompt.txt',
+            'price': 'price_prompt.txt', 
+            'tech': 'tech_prompt.txt',
+            'default': 'default_prompt.txt'
         }
+        
+        # 从文件读取提示词
+        for prompt_type, filename in prompt_files.items():
+            file_path = prompts_dir / filename
+            try:
+                if file_path.exists():
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        self.default_prompts[prompt_type] = f.read().strip()
+                    logger.info(f"成功加载提示词文件: {filename}")
+                else:
+                    logger.warning(f"提示词文件不存在: {file_path}")
+                    # 设置一个基本的fallback提示词
+                    self.default_prompts[prompt_type] = self._get_fallback_prompt(prompt_type)
+            except Exception as e:
+                logger.error(f"读取提示词文件失败 {filename}: {e}")
+                # 设置一个基本的fallback提示词
+                self.default_prompts[prompt_type] = self._get_fallback_prompt(prompt_type)
+                
+        logger.info(f"提示词初始化完成，加载了 {len(self.default_prompts)} 个提示词")
+    
+    def _get_fallback_prompt(self, prompt_type: str) -> str:
+        """获取fallback提示词"""
+        fallback_prompts = {
+            'classify': '你是意图分类专家，判断用户消息类型，返回price/tech/default之一。',
+            'price': '你是专业电商卖家，坚持价格不议价。语言简短，每句≤10字，总字数≤40字。',
+            'tech': '你是技术专家，用通俗语言解答产品问题。每句≤10字，总字数≤40字。',
+            'default': '你是电商卖家，提供专业客服。语言简短，每句≤10字，总字数≤40字。'
+        }
+        return fallback_prompts.get(prompt_type, '请提供专业的客服回复。')
     
     def get_client(self, cookie_id: str) -> Optional[OpenAI]:
         """获取指定账号的OpenAI客户端"""
