@@ -1725,12 +1725,32 @@ class XianyuLive:
 
             if not item_info_raw:
                 logger.debug(f"数据库中无商品信息: {item_id}")
-                # 使用默认商品信息
-                item_info = {
-                    'title': '商品信息获取失败',
-                    'price': 0,
-                    'desc': '暂无商品描述'
-                }
+                # 尝试实时获取商品信息
+                try:
+                    item_detail = await self.get_item_detail(item_id)
+                    if item_detail and 'item_title' in item_detail:
+                        item_info = {
+                            'title': item_detail.get('item_title', '未知商品'),
+                            'price': self._parse_price(item_detail.get('item_price', '面议')),
+                            'desc': item_detail.get('item_description', '暂无商品描述')
+                        }
+                        logger.info(f"实时获取商品信息成功: {item_info['title']}")
+                    else:
+                        # 使用智能默认商品信息（不显示具体价格）
+                        item_info = {
+                            'title': '餐饮券商品',
+                            'price': '面议',
+                            'desc': '详细信息请查看商品详情页'
+                        }
+                        logger.debug(f"使用智能默认商品信息")
+                except Exception as e:
+                    logger.warning(f"实时获取商品信息失败: {e}")
+                    # 使用智能默认商品信息（不显示具体价格）
+                    item_info = {
+                        'title': '餐饮券商品',
+                        'price': '面议',
+                        'desc': '详细信息请查看商品详情页'
+                    }
             else:
                 # 解析数据库中的商品信息
                 item_info = {
@@ -3371,14 +3391,31 @@ class XianyuLive:
     def is_sync_package(self, message_data):
         """判断是否为同步包消息"""
         try:
-            return (
-                isinstance(message_data, dict)
-                and "body" in message_data
-                and "syncPushPackage" in message_data["body"]
-                and "data" in message_data["body"]["syncPushPackage"]
-                and len(message_data["body"]["syncPushPackage"]["data"]) > 0
-            )
-        except Exception:
+            # 基本结构检查
+            if not isinstance(message_data, dict) or "body" not in message_data:
+                return False
+            
+            body = message_data["body"]
+            if not isinstance(body, dict):
+                return False
+            
+            # 检查是否有syncPushPackage结构
+            if "syncPushPackage" in body:
+                sync_package = body["syncPushPackage"]
+                if isinstance(sync_package, dict) and "data" in sync_package:
+                    data = sync_package["data"]
+                    if isinstance(data, list) and len(data) > 0:
+                        return True
+            
+            # 如果没有标准的syncPushPackage，检查是否有其他消息内容
+            # 这样可以处理更多类型的消息
+            if any(key in body for key in ["message", "content", "data", "msg", "text"]):
+                logger.info(f"【{self.cookie_id}】检测到非标准消息格式，尝试处理")
+                return True
+                
+            return False
+        except Exception as e:
+            logger.error(f"检查同步包消息时出错: {e}")
             return False
 
     async def create_session(self):
@@ -3839,19 +3876,28 @@ class XianyuLive:
 
             # 如果API回复失败或未启用API，按新的优先级顺序处理
             if not reply:
-                # 1. 首先尝试关键词匹配（传入商品ID）
-                reply = await self.get_keyword_reply(send_user_name, send_user_id, send_message, item_id)
-                if reply == "EMPTY_REPLY":
-                    # 匹配到关键词但回复内容为空，不进行任何回复
-                    logger.info(f"[{msg_time}] 【{self.cookie_id}】匹配到空回复关键词，跳过自动回复")
-                    return
-                elif reply:
-                    reply_source = '关键词'  # 标记为关键词回复
+                # 1. 首先尝试AI回复（如果AI开关打开）
+                reply = await self.get_ai_reply(send_user_name, send_user_id, send_message, item_id, chat_id)
+                if reply:
+                    reply_source = 'AI'  # 标记为AI回复
                 else:
-                    # 2. 关键词匹配失败，如果AI开关打开，尝试AI回复
-                    reply = await self.get_ai_reply(send_user_name, send_user_id, send_message, item_id, chat_id)
-                    if reply:
-                        reply_source = 'AI'  # 标记为AI回复
+                    # 检查是否只使用AI回复
+                    from db_manager import db_manager
+                    ai_settings = db_manager.get_ai_reply_settings(self.cookie_id)
+                    only_ai_reply = ai_settings.get('only_ai_reply', False)
+                    
+                    if only_ai_reply:
+                        logger.info(f"[{msg_time}] 【{self.cookie_id}】仅使用AI回复模式，跳过关键词和默认回复")
+                        return
+                    
+                    # 2. AI回复失败，尝试关键词匹配（传入商品ID）
+                    reply = await self.get_keyword_reply(send_user_name, send_user_id, send_message, item_id)
+                    if reply == "EMPTY_REPLY":
+                        # 匹配到关键词但回复内容为空，不进行任何回复
+                        logger.info(f"[{msg_time}] 【{self.cookie_id}】匹配到空回复关键词，跳过自动回复")
+                        return
+                    elif reply:
+                        reply_source = '关键词'  # 标记为关键词回复
                     else:
                         # 3. 最后使用默认回复
                         reply = await self.get_default_reply(send_user_name, send_user_id, send_message, chat_id, item_id)

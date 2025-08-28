@@ -18,6 +18,22 @@ AUTO_REPLY:
   enabled: true
   max_retry: 3
   retry_interval: 5
+
+# 增强AI回复配置
+AI_REPLY:
+  use_enhanced: true  # 启用增强AI回复引擎
+  enhanced_features:
+    context_aware: true  # 启用上下文感知对话
+    multi_expert: true   # 启用多专家路由系统
+    negotiation_tracking: true  # 启用议价轮次跟踪
+    intent_detection: true  # 启用智能意图识别
+  context_management:
+    max_messages: 10     # 最多保留的对话消息数
+    expire_time: 3600    # 上下文过期时间（秒）
+  temperature_settings:
+    price_intent: 0.3    # 价格咨询的温度参数
+    technical_intent: 0.2  # 技术支持的温度参数
+    general_intent: 0.5  # 一般咨询的温度参数
 ITEM_DETAIL:
   auto_fetch:
     enabled: true  # 是否启用自动获取商品详情
@@ -25,6 +41,25 @@ ITEM_DETAIL:
     timeout: 30  # 请求超时时间（秒）
     max_concurrent: 3  # 最大并发请求数
     retry_delay: 0.5  # 请求间隔（秒）
+
+# 增强商品信息管理配置
+ITEM_MANAGEMENT:
+  use_enhanced: true  # 启用增强商品信息管理器
+  cache_settings:
+    memory_cache_duration: 86400  # 内存缓存24小时（秒）
+    database_cache_duration: 604800  # 数据库缓存7天（秒）
+    auto_cleanup: true  # 自动清理过期缓存
+  enhanced_features:
+    full_detail_extraction: true  # 提取完整商品详情
+    attribute_parsing: true  # 解析商品属性和标签
+    seller_info_extraction: true  # 提取卖家信息
+    location_info_extraction: true  # 提取地理位置信息
+    image_info_extraction: true  # 提取图片信息
+  api_integration:
+    use_real_time_api: true  # 启用实时API获取
+    fallback_to_database: true  # API失败时回退到数据库
+    retry_count: 3  # API重试次数
+    retry_delay: 1.0  # 重试间隔（秒）
 COOKIES:
   last_update_time: ''
   value: ''
